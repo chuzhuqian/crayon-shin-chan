@@ -5,7 +5,10 @@
 </template>
 
 <script lang="ts" setup>
-var a = 1
+const a = {
+  b: 1
+}
+console.log(a)
 </script>
 
 <style>

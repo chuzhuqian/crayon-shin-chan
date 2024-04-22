@@ -4,11 +4,14 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   modules: [
     '@nuxtjs/tailwindcss',
-    '@nuxt/eslint'
+    '@nuxt/eslint',
   ],
   eslint: {
     config: {
-      stylistic: true
+      stylistic: {
+        indent: 2,
+        commaDangle: 'never'
+      }
     }
   }
 })
