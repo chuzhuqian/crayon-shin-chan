@@ -6,6 +6,9 @@ export default defineNuxtConfig({
     '@nuxtjs/tailwindcss',
     '@nuxt/eslint',
   ],
+  css: [
+    '@/assets/style/global.scss'
+  ],
   eslint: {
     config: {
       stylistic: {

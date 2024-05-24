@@ -7,4 +7,11 @@ module.exports = {
     "./app.vue",
     "./error.vue",
   ],
+  theme: {
+    extend: {
+      width: {
+        content: '1080px',
+      }
+    }
+  }
 }
