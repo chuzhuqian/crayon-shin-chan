@@ -2,12 +2,15 @@ export interface Role {
   id: number;
   name: string;
   avatar: string;
+  x?: number;
+  y?: number;
+  z?: number;
   relationships: Relationship[];
 }
 
 interface Relationship {
   targetId: number;
-  type: string;
+  // type: string;
 }
 
 const roles: Role[] = [
@@ -17,12 +20,16 @@ const roles: Role[] = [
     avatar: 'https://avatars.githubusercontent.com/u/69023475?v=4',
     relationships: [
       {
-        targetId: 2,
-        type: '亲子'
+        targetId: 2
       },
       {
-        targetId: 3,
-        type: '亲子'
+        targetId: 3
+      },
+      {
+        targetId: 4
+      },
+      {
+        targetId: 5
       }
     ]
   },
@@ -32,12 +39,10 @@ const roles: Role[] = [
     avatar: 'https://avatars.githubusercontent.com/u/69023475?v=4',
     relationships: [
       {
-        targetId: 1,
-        type: '亲子'
+        targetId: 1
       },
       {
-        targetId: 3,
-        type: '夫妻'
+        targetId: 3
       }
     ]
   },
@@ -47,12 +52,30 @@ const roles: Role[] = [
     avatar: 'https://avatars.githubusercontent.com/u/69023475?v=4',
     relationships: [
       {
-        targetId: 1,
-        type: '亲子'
+        targetId: 1
       },
       {
-        targetId: 2,
-        type: '夫妻'
+        targetId: 2
+      }
+    ]
+  },
+  {
+    id: 4,
+    name: '野原小白',
+    avatar: 'https://avatars.githubusercontent.com/u/69023475?v=4',
+    relationships: [
+      {
+        targetId: 1
+      }
+    ]
+  },
+  {
+    id: 5,
+    name: '风间彻',
+    avatar: 'https://avatars.githubusercontent.com/u/69023475?v=4',
+    relationships: [
+      {
+        targetId: 1
       }
     ]
   }
