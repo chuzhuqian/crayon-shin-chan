@@ -8,6 +8,7 @@
 import roles from './role'
 import type { Role } from './role'
 import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 
 const config = reactive({
   width: 1080,
@@ -26,9 +27,20 @@ const config = reactive({
 const maxRelationships = Math.max(...roles.map(role => role.relationships.length))
 
 onMounted(() => {
+  clacCanvasSize()
+  window.addEventListener('resize', clacCanvasSize)
   draw()
 })
 
+onUnmounted(() => {
+  window.removeEventListener('resize', clacCanvasSize)
+})
+function clacCanvasSize() {
+  // 获取浏览器窗口高度
+  config.width = document.body.clientWidth
+  config.height = document.body.clientHeight - 60
+  config.camera.aspect = config.width / config.height
+}
 function draw() {
   const canvas = document.getElementById('canvas')
   if (!canvas) return
@@ -48,6 +60,10 @@ function draw() {
     config.camera.near,
     config.camera.far
   )
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableRotate = false; 
+  // controls.enablePan = true; // 允许在XY平面上进行拖动操作
+  controls.enableDamping = true; // 可选：启用阻尼效果，使动画平滑
   camera.position.z = config.camera.position.z
 
   for (let i = 0; i < roles.length; i++) {
@@ -66,6 +82,7 @@ function draw() {
 			camera.updateProjectionMatrix()
 		}
     renderer.render(scene, camera)
+    controls.update(); // 更新控制器状态
     requestAnimationFrame(render)
   }
 
@@ -93,8 +110,8 @@ function drawLines(scene: THREE.Scene, role: Role) {
       const { x: endX, y: endY } = target
       const material = new THREE.LineBasicMaterial({ color: 0xffffff })
       const points = []
-      points.push(new THREE.Vector3(startX, startY, 0))
-      points.push(new THREE.Vector3(endX, endY, 0))
+      points.push(new THREE.Vector3(startX, startY, -0.1))
+      points.push(new THREE.Vector3(endX, endY, -0.1))
       const geometry = new THREE.BufferGeometry().setFromPoints(points)
       const line = new THREE.Line(geometry, material)
       scene.add(line)
@@ -123,7 +140,6 @@ function getCameraViewSize(camera: THREE.PerspectiveCamera) {
   return { width, height }
 }
 </script>
-
 <style lang="scss" scoped>
 .page-container {
   display: flex;

@@ -30,7 +30,6 @@ const routes = [
 
 <style lang="scss" scoped>
 .default-layout {
-  min-width: 1080px;
   min-height: 100vh;
   background-image: url(@/assets/images/layouts/default/page-bg.png);
 
