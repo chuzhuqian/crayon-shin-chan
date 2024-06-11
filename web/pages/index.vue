@@ -1,6 +1,6 @@
 <template>
   <div class="">
-    <!-- shouye -->
+    shouye
   </div>
 </template>
 

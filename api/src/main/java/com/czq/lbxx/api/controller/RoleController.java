@@ -1,5 +1,6 @@
 package com.czq.lbxx.api.controller;
 
+import com.czq.lbxx.api.common.Response;
 import com.czq.lbxx.api.entity.Role;
 import com.czq.lbxx.api.service.RoleService;
 import jakarta.annotation.Resource;
@@ -17,7 +18,7 @@ public class RoleController {
     RoleService roleService;
 
     @GetMapping("list")
-    public List<Role> list() {
-        return roleService.getAll();
+    public Response<List<Role>> list() {
+        return Response.success(roleService.getAll());
     }
 }

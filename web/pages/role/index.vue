@@ -1,15 +1,15 @@
-<template>
-  <div class="page-container">
-    <canvas id="canvas" :width="config.width" :height="config.height" />
-  </div>
-</template>
-
 <script lang="ts" setup>
-import roles from './role'
-import type { Role } from './role'
+import type { Role } from '@/api/types/role'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { getRoleList } from '@/api/role'
+import * as TWEEN from '@tweenjs/tween.js'
 
+useHead({
+  meta: [
+    { name: 'referrer', content: 'no-referrer' }
+  ]
+})
 const config = reactive({
   width: 1080,
   height: 600,
@@ -19,39 +19,38 @@ const config = reactive({
     near: 1,
     far: 1000,
     position: {
-      z: 20
+      z: 50
     }
   },
-  avatarSize: 1
+  avatarSize: 1,
+  randomPosition: {
+    minRadius: 0,
+    maxRadius: 20,
+    exclusionRadius: 3
+  },
+  avatarAnimate: {
+    offset: 0.2
+  }
 })
-const maxRelationships = Math.max(...roles.map(role => role.relationships.length))
 
-onMounted(() => {
+let canvas: HTMLCanvasElement
+const mousePosition = new THREE.Vector2()
+let clickPosition: THREE.Vector2 | null = null
+
+onMounted(async () => {
   clacCanvasSize()
-  window.addEventListener('resize', clacCanvasSize)
-  draw()
-})
 
-onUnmounted(() => {
-  window.removeEventListener('resize', clacCanvasSize)
-})
-function clacCanvasSize() {
-  // 获取浏览器窗口高度
-  config.width = document.body.clientWidth
-  config.height = document.body.clientHeight - 60
-  config.camera.aspect = config.width / config.height
-}
-function draw() {
-  const canvas = document.getElementById('canvas')
-  if (!canvas) return
+  canvas = document.getElementById('canvas') as HTMLCanvasElement
+
   const renderer = new THREE.WebGLRenderer({
-    canvas: canvas as HTMLCanvasElement,
+    canvas: canvas,
     antialias: true
   })
   renderer.setSize(config.width, config.height)
-  // renderer.setClearColor(0x000000, 0)
-  const scene = new THREE.Scene()
+  renderer.setClearColor(0xFFC743, 0.3)
 
+  const scene = new THREE.Scene()
+  
   const loader = new THREE.TextureLoader()
 
   const camera = new THREE.PerspectiveCamera(
@@ -60,36 +59,178 @@ function draw() {
     config.camera.near,
     config.camera.far
   )
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableRotate = false; 
-  // controls.enablePan = true; // 允许在XY平面上进行拖动操作
-  controls.enableDamping = true; // 可选：启用阻尼效果，使动画平滑
   camera.position.z = config.camera.position.z
 
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableRotate = false
+  controls.enableDamping = true // 可选：启用阻尼效果，使动画平滑
+  const eventHelper = new EventHelper()
+
+  const { data } = await getRoleList()
+  const roles = data.filter(v => {
+    v.relationships = v.relationships || []
+    return Boolean(v.avatar)
+  })
+  roles.sort((a, b) => {
+    return b.relationships.length - a.relationships.length
+  })
+  const positions = []
   for (let i = 0; i < roles.length; i++) {
-    const { x, y, z } = calcRolePositon(roles[i], i)
-    roles[i].x = x
-    roles[i].y = y
-    roles[i].z = z
-    drawAvatar(loader, scene, roles[i], i)
-    drawLines(scene, roles[i])
+    let foundValidPosition = false
+    const radius = config.randomPosition.minRadius +
+      (config.randomPosition.maxRadius - config.randomPosition.minRadius) *
+      (1 - roles[i].relationships.length / (Math.max(...roles.map(role => role.relationships.length)) || 1))
+    
+    while (!foundValidPosition) {
+      const [x, y] = getRandomPosition(radius)
+      if (isPositionValid(x, y, positions, config.randomPosition.exclusionRadius)) {
+        roles[i].x = x
+        roles[i].y = y
+        positions.push([x, y])
+        foundValidPosition = true
+      }
+    }
+    const avatar = drawAvatar(loader, scene, roles[i], i)
+    animateAvatar(avatar)
+    drawLines(scene, roles[i], roles)
   }
-  function render(time: number)  {
-    time *= 0.001
+
+  function render()  {
+    requestAnimationFrame(render)
 		if (resizeRendererToDisplaySize(renderer)) {
-			const canvas = renderer.domElement
-			camera.aspect = canvas.clientWidth / canvas.clientHeight
+			camera.aspect = config.camera.aspect
 			camera.updateProjectionMatrix()
 		}
+    eventHelper.pick(mousePosition, scene, camera)
+    if (clickPosition) {
+      eventHelper.tap(clickPosition, scene, camera)
+    }
+    TWEEN.update()
+    controls.update()
     renderer.render(scene, camera)
-    controls.update(); // 更新控制器状态
-    requestAnimationFrame(render)
   }
 
   requestAnimationFrame(render)
+
+  window.addEventListener('resize', clacCanvasSize)
+  window.addEventListener('click', handleClick)
+  window.addEventListener('mousemove', setMousePosition)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', clacCanvasSize)
+  window.removeEventListener('mousemove', setMousePosition)
+})
+
+class EventHelper {
+  raycaster: THREE.Raycaster;
+  pickedObject: THREE.Mesh | null;
+  constructor() {
+    this.raycaster = new THREE.Raycaster()
+    this.pickedObject = null
+  }
+  pick(normalizedPosition: THREE.Vector2, scene: THREE.Scene, camera: THREE.Camera) {
+
+    if (this.pickedObject) {
+      resetAvatar(this.pickedObject);
+      this.pickedObject = null;
+    }
+
+    this.raycaster.setFromCamera(normalizedPosition, camera)
+    const intersectedObjects = this.raycaster.intersectObjects(scene.children)
+    if (intersectedObjects.length) {
+      this.pickedObject = intersectedObjects[0].object as THREE.Mesh
+      highlightAvatar(this.pickedObject)
+    }
+  }
+
+  tap(normalizedPosition: THREE.Vector2, scene: THREE.Scene, camera: THREE.Camera) {
+    this.raycaster.setFromCamera(normalizedPosition, camera)
+    const intersectedObjects = this.raycaster.intersectObjects(scene.children)
+    if (intersectedObjects.length) {
+      const obj = intersectedObjects[0].object
+      navigateTo('/role/' + obj.id)
+    }
+    clickPosition = null
+  }
+}
+function setMousePosition(event: MouseEvent) {
+  const { x, y } = getMousePosition(event)
+  mousePosition.x = x
+  mousePosition.y = y
+}
+function getMousePosition(event: MouseEvent) {
+  const rect = canvas.getBoundingClientRect()
+  const pos = {
+    x: (event.clientX - rect.left) * canvas.width  / rect.width,
+    y: (event.clientY - rect.top ) * canvas.height / rect.height,
+  }
+  return {
+    x: (pos.x / canvas.width ) *  2 - 1,
+    y: (pos.y / canvas.height) * -2 + 1
+  }
+}
+function clacCanvasSize() {
+  config.width = document.body.clientWidth
+  config.height = document.body.clientHeight - 60
+  config.camera.aspect = config.width / config.height
+}
+function handleClick(event: MouseEvent) {
+  const { x, y } = getMousePosition(event)
+  clickPosition = new THREE.Vector2(x, y)
+}
+function highlightAvatar(avatar: THREE.Mesh) {
+    // 放大头像
+    new TWEEN.Tween(avatar.scale)
+        .to({ x: 1.4, y: 1.4, z: 1.4 }, 100)
+        .easing(TWEEN.Easing.Quadratic.InOut)
+        .start();
+    // 更改鼠标指针
+    document.body.style.cursor = 'pointer';
 }
 
-function drawAvatar(loader: THREE.TextureLoader, scene: THREE.Scene, role: Role, index: number) {
+function resetAvatar(avatar: THREE.Mesh) {
+    // 还原头像大小
+    new TWEEN.Tween(avatar.scale)
+        .to({ x: 1, y: 1, z: 1 }, 300)
+        .easing(TWEEN.Easing.Quadratic.InOut)
+        .start();
+
+    // 还原鼠标指针
+    document.body.style.cursor = 'default';
+}
+
+function animateAvatar(avatar: THREE.Mesh<THREE.CircleGeometry>) {
+  const initialPosition = {
+    x: avatar.position.x,
+    y: avatar.position.y
+  }
+  avatar.rotation.z = Math.random() * 2 * Math.PI
+  const rotationSpeed = Math.random() * (40000 - 20000) + 20000
+  function move(initialPosition : { x: number, y: number }) {
+    const tagetPosition = {
+      x: initialPosition.x + (Math.random() - 0.5) * config.avatarAnimate.offset,
+      y: initialPosition.y + (Math.random() - 0.5) * config.avatarAnimate.offset
+    }
+
+    new TWEEN.Tween(avatar.position)
+      .to(tagetPosition, 1000)
+      .easing(TWEEN.Easing.Quadratic.InOut)
+      .onComplete(move) // 完成后继续下一次移动
+      .start();
+  }
+  function rotate() {
+    new TWEEN.Tween(avatar.rotation)
+      .to({ z: avatar.rotation.z + Math.PI * 2 }, rotationSpeed) // 20秒内旋转360度
+      .easing(TWEEN.Easing.Linear.None)
+      .onComplete(rotate) // 完成后继续下一次旋转
+      .start();
+  }
+  move(initialPosition)
+  rotate()
+}
+
+function drawAvatar(loader: THREE.TextureLoader, scene: THREE.Scene, role: Role, index: number) : THREE.Mesh<THREE.CircleGeometry> {
   const geometry = new THREE.CircleGeometry(config.avatarSize, 80)
   const texture = loader.load(role.avatar)
   const material = new THREE.MeshBasicMaterial({
@@ -99,10 +240,12 @@ function drawAvatar(loader: THREE.TextureLoader, scene: THREE.Scene, role: Role,
   cube.position.x = role.x || 0
   cube.position.y = role.y || 0
   cube.position.z = role.z || 0
+  cube.userData.role = role
   scene.add(cube)
+  return cube
 }
 
-function drawLines(scene: THREE.Scene, role: Role) {
+function drawLines(scene: THREE.Scene, role: Role, roles: Role[] = []) {
   const { x: startX, y: startY } = role
   role.relationships.forEach(v => {
     const target = roles.find(r => r.id === v.targetId)
@@ -119,27 +262,29 @@ function drawLines(scene: THREE.Scene, role: Role) {
   })
 }
 
-function calcRolePositon(role: Role, index: number) : {
-  x: number,
-  y: number,
-  z: number
-} {
-  const numRelationships = role.relationships.length
-  const radius = 10 * (1 - numRelationships / maxRelationships)
-  const angle = (index / roles.length) * 2 * Math.PI
-  const x = radius * Math.cos(angle)
-  const y = radius * Math.sin(angle)
-  return {
-    x, y, z: 0
-  }
+function getRandomPosition(radius: number) : number[] {
+  const angle = Math.random() * 2 * Math.PI
+  const distance = Math.random() * radius
+  const x = Math.cos(angle) * distance
+  const y = Math.sin(angle) * distance
+  return [x, y]
 }
-function getCameraViewSize(camera: THREE.PerspectiveCamera) {
-  const vFOV = camera.fov * Math.PI / 180
-  const height = 2 * Math.tan(vFOV / 2) * camera.position.z
-  const width = height * camera.aspect 
-  return { width, height }
+
+function isPositionValid(x: number, y: number, positions: number[][], exclusionRadius: number) : boolean {
+  for (let i = 0; i < positions.length; i++) {
+    const [px, py] = positions[i]
+    if (Math.hypot(px - x, py - y) < exclusionRadius) {
+        return false
+    }
+  }
+  return true
 }
 </script>
+<template>
+  <div class="page-container">
+    <canvas id="canvas" :width="config.width" :height="config.height" />
+  </div>
+</template>
 <style lang="scss" scoped>
 .page-container {
   display: flex;
